@@ -40,7 +40,7 @@ struct opencl_info {
 	const char *input;
 	const char *output;
 	char kernel_c_name[PATH_MAX];
-
+        char kernel_name[PATH_MAX];
 	isl_printer *kprinter;
 
 	FILE *host_c;
@@ -645,8 +645,10 @@ static __isl_give isl_printer *opencl_print_kernel_arguments(
 /* Print the header of the given kernel.
  */
 static __isl_give isl_printer *opencl_print_kernel_header(
-	__isl_take isl_printer *p, struct gpu_prog *prog,
-	struct ppcg_kernel *kernel)
+							  __isl_take isl_printer *p,
+							  struct gpu_prog *prog,
+							  struct ppcg_kernel *kernel,
+							  struct opencl_info *info)
 {
 	p = isl_printer_start_line(p);
 	if (info->options->gpuclang) {
@@ -939,7 +941,9 @@ static __isl_give isl_printer *set_opencl_macros(__isl_take isl_printer *p)
 }
 
 static __isl_give isl_printer *opencl_print_kernel(struct gpu_prog *prog,
-	struct ppcg_kernel *kernel, __isl_take isl_printer *p)
+						   struct ppcg_kernel *kernel,
+						   __isl_take isl_printer *p,
+						   struct opencl_info *info)
 {
 	isl_ctx *ctx = isl_ast_node_get_ctx(kernel->tree);
 	isl_ast_print_options *print_options;
@@ -949,7 +953,7 @@ static __isl_give isl_printer *opencl_print_kernel(struct gpu_prog *prog,
 				&opencl_print_kernel_stmt, NULL);
 
 	p = isl_printer_set_output_format(p, ISL_FORMAT_C);
-	p = opencl_print_kernel_header(p, prog, kernel);
+	p = opencl_print_kernel_header(p, prog, kernel, info);
 	p = isl_printer_print_str(p, "{");
 	p = isl_printer_end_line(p);
 	p = isl_printer_indent(p, 4);
@@ -1325,8 +1329,10 @@ static __isl_give isl_printer *opencl_print_host_user(
 	p = isl_printer_start_line(p);
 	p = isl_printer_end_line(p);
 
-	data->opencl->kprinter = opencl_print_kernel(data->prog, kernel,
-						data->opencl->kprinter);
+	data->opencl->kprinter = opencl_print_kernel(data->prog,
+						     kernel,
+						     data->opencl->kprinter,
+						     data->opencl);
 
 	return p;
 }
