@@ -1,0 +1,31 @@
+#!/bin/sh
+# ============================================================
+# clang-pcg script builder
+#
+# This script file conduct the building of clang-pcg and all
+# of its components. It invokes all the different stages of
+# the build process.
+#
+# Copyright (C) 2016, Marcio Machado Pereira
+# License: BSD
+# ============================================================
+
+HELP=false
+PREFIX=$HOME/llvm-omp/install
+
+while true; do
+    case "$1" in
+	-p | --prefix ) PREFIX="$2"; shift 2 ;;
+	-h | --help ) HELP=true; shift ;;
+	* ) break ;;
+    esac
+done
+
+if [ $HELP = "true" ] ; then
+    echo "Usage: ./build-pcg --prefix <path_to_install_prefix>" ;
+    exit 1;
+fi
+
+./configure --prefix=$PREFIX --with-clang-prefix=$PREFIX "CFLAGS=-g -O2 -w" "CXXFLAGS=-g -O2 -w -fno-rtti"
+make install
+cp clang-pcg $PREFIX/bin

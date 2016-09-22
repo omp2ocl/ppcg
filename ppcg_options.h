@@ -85,6 +85,8 @@ struct ppcg_options {
 	char *save_schedule_file;
 	/* Name of file for loading schedule or NULL. */
 	char *load_schedule_file;
+        /* flag to integrate with gpuclang (OpenCL target only) */
+        int gpuclang;  
 };
 
 ISL_ARG_DECL(ppcg_debug_options, struct ppcg_debug_options,

@@ -10,6 +10,7 @@
 #include <ctype.h>
 #include <limits.h>
 #include <string.h>
+#include <regex.h>
 
 #include <isl/aff.h>
 #include <isl/ast.h>
@@ -31,8 +32,8 @@
  *	if not specified by the user.
  * kernel_c_name is the name of the kernel_c file.
  * kprinter is an isl_printer for the kernel file.
- * host_c is the generated source file for the host code.  kernel_c is
- * the generated source file for the kernel.
+ * host_c is the generated source file for the host code.
+ * kernel_c is the generated source file for the kernel.
  */
 struct opencl_info {
 	struct ppcg_options *options;
@@ -63,7 +64,7 @@ static FILE *open_or_croak(const char *name)
  * the user did not specify an output file name).
  * Add the necessary includes to these files, including those specified
  * by the user.
- *
+ * Also open the _comm file handler if integrated with gpuclang
  * Return 0 on success and -1 on failure.
  */
 static int opencl_open_files(struct opencl_info *info)
@@ -86,9 +87,14 @@ static int opencl_open_files(struct opencl_info *info)
 		strcpy(name + len, "_host.c");
 		info->host_c = open_or_croak(name);
 	}
-
+	
+	memcpy(info->kernel_name, name, len);
 	memcpy(info->kernel_c_name, name, len);
-	strcpy(info->kernel_c_name + len, "_kernel.cl");
+	strcpy(info->kernel_c_name + len, ".cl");
+	if (info->options->gpuclang) {
+	  _comm = open_or_croak(info->kernel_name);
+	  if (!_comm) return -1;
+	}	
 	info->kernel_c = open_or_croak(info->kernel_c_name);
 
 	if (!info->host_c || !info->kernel_c)
@@ -182,8 +188,8 @@ static int opencl_write_kernel_file(struct opencl_info *opencl)
 	return 0;
 }
 
-/* Close all output files.  Write the kernel contents to the kernel file before
- * closing it.
+/* Close all output files.
+ * Write the kernel contents to the kernel file before closing it.
  *
  * Return 0 on success and -1 on failure.
  */
@@ -197,6 +203,13 @@ static int opencl_close_files(struct opencl_info *info)
 	}
 	if (info->host_c)
 		fclose(info->host_c);
+
+	if (_comm) fclose(_comm);  
+	if (info->kernel_c) {
+	  r = opencl_write_kernel_file(info);
+	  fclose(info->kernel_c);
+	}
+	if (info->host_c) fclose(info->host_c);
 
 	return r;
 }
@@ -215,7 +228,7 @@ static __isl_give isl_printer *opencl_print_host_macros(
 	p = isl_printer_start_line(p);
 	p = isl_printer_print_str(p, macros);
 	p = isl_printer_end_line(p);
-
+	
 	return p;
 }
 
@@ -464,26 +477,42 @@ static __isl_give isl_printer *opencl_set_kernel_argument(
 	p = isl_printer_print_str(p, "));");
 	p = isl_printer_end_line(p);
 
+	if (_comm) {
+	  if (read_only_scalar) {
+	    fprintf(_comm, "%d 2 %d %s\n", kernel_id, arg_index, arg_name);
+	  } else {
+	    fprintf(_comm, "%d 1 %d %s\n", kernel_id, arg_index, arg_name);
+	  }
+	}
+
 	return p;
 }
 
 /* Print the block sizes as a list of the sizes in each
- * dimension.
+ * dimension. If gpuclang was set, emit the block sizes
  */
 static __isl_give isl_printer *opencl_print_block_sizes(
 	__isl_take isl_printer *p, struct ppcg_kernel *kernel)
 {
 	int i;
 
-	if (kernel->n_block > 0)
+	if (_comm) fprintf(_comm, "%d ", kernel->id);
+	if (kernel->n_block > 0) {
 		for (i = 0; i < kernel->n_block; ++i) {
 			if (i)
 				p = isl_printer_print_str(p, ", ");
 			p = isl_printer_print_int(p, kernel->block_dim[i]);
+			if (_comm) fprintf(_comm, "%d ", kernel->block_dim[i]);
 		}
-	else
-		p = isl_printer_print_str(p, "1");
+		if (_comm)
+		  for (i = kernel->n_block; i < 3; i++) fprintf(_comm, "0 ");
+	}
+	else {
+	  p = isl_printer_print_str(p, "1");
+	  if (_comm) fprintf(_comm, "1 0 0");
+	}
 
+	if (_comm) fprintf(_comm, "\n");
 	return p;
 }
 
@@ -620,8 +649,15 @@ static __isl_give isl_printer *opencl_print_kernel_header(
 	struct ppcg_kernel *kernel)
 {
 	p = isl_printer_start_line(p);
-	p = isl_printer_print_str(p, "__kernel void kernel");
-	p = isl_printer_print_int(p, kernel->id);
+	if (info->options->gpuclang) {
+	  p = isl_printer_print_str(p, "__kernel void ");
+	  p = isl_printer_print_str(p, info->kernel_name);
+	  p = isl_printer_print_int(p, kernel->id);  
+	}
+	else {
+	  p = isl_printer_print_str(p, "__kernel void kernel");
+	  p = isl_printer_print_int(p, kernel->id);
+	}
 	p = isl_printer_print_str(p, "(");
 	p = opencl_print_kernel_arguments(p, prog, kernel, 1);
 	p = isl_printer_print_str(p, ")");
@@ -968,7 +1004,31 @@ static __isl_give isl_printer *opencl_print_total_number_of_work_items_for_dim(
 		p = isl_printer_print_ast_expr(p, bound_grid);
 		p = isl_printer_print_str(p, ") * ");
 		p = isl_printer_print_int(p, kernel->block_dim[i]);
-		isl_ast_expr_free(bound_grid);
+
+		if (_comm) {
+		  isl_ctx *ctx = isl_ast_node_get_ctx(kernel->tree);
+		  isl_printer *aux = isl_printer_to_str(ctx);
+		  aux = isl_printer_print_ast_expr(aux, bound_grid);
+		  char* s = isl_printer_get_str(aux);
+		  isl_printer_free(aux);
+		  regmatch_t match;
+		  regex_t re;
+		  char *pattern = "[0-9]+";
+		  int status = regcomp(&re, pattern, REG_EXTENDED);
+		  status = regexec(&re, s, 1, &match, 0);
+		  if (status == 0) {
+		    char wsize[10];
+		    int ndigits = (int)match.rm_eo - ((int)match.rm_so);
+		    strncpy(wsize, s+match.rm_so, ndigits);
+		    wsize[ndigits]='\0'; /* null character manually added */
+		    fprintf (_comm, "%s ", wsize);
+		  }
+		  else {
+		    fprintf (_comm, "0 ");
+		  }
+		}
+				
+		isl_ast_expr_free(bound_grid);		
 	} else if (i >= grid_dim) {
 		p = isl_printer_print_int(p, kernel->block_dim[i]);
 	} else {
@@ -1008,8 +1068,10 @@ static __isl_give isl_printer *opencl_print_total_number_of_work_items_as_list(
 	grid_dim = isl_multi_pw_aff_dim(kernel->grid_size, isl_dim_set);
 	block_dim = kernel->n_block;
 
+	if (_comm) fprintf (_comm, "%d ", kernel->id);
 	if ((grid_dim <= 0) || (block_dim <= 0)) {
 		p = isl_printer_print_str(p, "1");
+		if (_comm) fprintf (_comm, "1 0 0\n");
 		return p;
 	}
 
@@ -1019,6 +1081,11 @@ static __isl_give isl_printer *opencl_print_total_number_of_work_items_as_list(
 
 		p = opencl_print_total_number_of_work_items_for_dim(p,
 			kernel, i);
+	}
+
+	if (_comm) {
+	  for (i = max(grid_dim, block_dim); i<3; i++) fprintf (_comm, "0 ");
+	  fprintf (_comm, "\n");
 	}
 
 	return p;

@@ -28,6 +28,9 @@
 #include "opencl.h"
 #include "cpu.h"
 
+// File handle used to communicate with gpuclang (setting in opencl_open_files)
+FILE *_comm = NULL;
+
 struct options {
 	struct pet_options *pet;
 	struct ppcg_options *ppcg;

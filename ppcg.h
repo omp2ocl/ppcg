@@ -10,6 +10,9 @@
 
 #include "ppcg_options.h"
 
+// File handle used to communicate with gpuclang (setting in opencl_open_files)
+extern  FILE *_comm;
+
 const char *ppcg_base_name(const char *filename);
 int ppcg_extract_base_name(char *name, const char *input);
 

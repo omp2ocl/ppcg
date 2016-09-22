@@ -108,7 +108,7 @@ ISL_ARG_INT(struct ppcg_options, max_shared_memory, 0,
 ISL_ARG_BOOL(struct ppcg_options, openmp, 0, "openmp", 0,
 	"Generate OpenMP macros (only for C target)")
 ISL_ARG_USER_OPT_CHOICE(struct ppcg_options, target, 0, "target", target,
-	&set_target, PPCG_TARGET_CUDA, PPCG_TARGET_CUDA,
+	&set_target, PPCG_TARGET_OPENCL, PPCG_TARGET_OPENCL,
 	"the target to generate code for")
 ISL_ARG_BOOL(struct ppcg_options, linearize_device_arrays, 0,
 	"linearize-device-arrays", 1,
@@ -133,4 +133,6 @@ ISL_ARG_STR(struct ppcg_options, save_schedule_file, 0, "save-schedule",
 ISL_ARG_STR(struct ppcg_options, load_schedule_file, 0, "load-schedule",
 	"file", NULL, "load schedule from <file>, "
 	"using it instead of an isl computed schedule")
+ISL_ARG_BOOL(struct ppcg_options, gpuclang, 0, "gpuclang", 0,
+	"assume integration with gpuclang (OpenCL target only)")
 ISL_ARGS_END

@@ -1,0 +1,12 @@
+#! /bin/sh
+
+# DYLD_LIBRARY_PATH will have no effects on spawned sub shells for OSX El Capitain
+export DYLD_LIBRARY_PATH=$LIBRARY_PATH
+
+# Use a proper internal environment variable to ensure we don't
+# fall including c/c++ header files in a cross-compiler environment
+export PATH=$HOST_LLVM/install/bin:$PATH
+export C_INCLUDE_PATH=$HOST_LLVM/install/include
+export CPLUS_INCLUDE_PATH=$C_INCLUDE_PATH
+
+exec ppcg --gpuclang --target=opencl "$@"
