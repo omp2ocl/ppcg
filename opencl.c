@@ -495,7 +495,7 @@ static __isl_give isl_printer *opencl_print_block_sizes(
 	__isl_take isl_printer *p, struct ppcg_kernel *kernel)
 {
 	int i;
-
+	
 	if (_comm) fprintf(_comm, "%d ", kernel->id);
 	if (kernel->n_block > 0) {
 		for (i = 0; i < kernel->n_block; ++i) {
@@ -1035,6 +1035,9 @@ static __isl_give isl_printer *opencl_print_total_number_of_work_items_for_dim(
 		isl_ast_expr_free(bound_grid);		
 	} else if (i >= grid_dim) {
 		p = isl_printer_print_int(p, kernel->block_dim[i]);
+		// In this case we print wsize[i] equals 1 because
+		// The kernel->block_dim[i] will be multiplied by it.
+		if (_comm) fprintf (_comm, "1 ");
 	} else {
 		grid_size_expr = kernel->grid_size_expr;
 		bound_grid = isl_ast_expr_get_op_arg(grid_size_expr, 1 + i);
